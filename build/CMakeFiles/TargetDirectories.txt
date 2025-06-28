@@ -1,0 +1,4 @@
+C:/Users/toankh/Documents/mini-project/build/CMakeFiles/COTP.dir
+C:/Users/toankh/Documents/mini-project/build/CMakeFiles/account_wallet_app.dir
+C:/Users/toankh/Documents/mini-project/build/CMakeFiles/edit_cache.dir
+C:/Users/toankh/Documents/mini-project/build/CMakeFiles/rebuild_cache.dir
