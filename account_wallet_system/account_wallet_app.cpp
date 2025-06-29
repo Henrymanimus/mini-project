@@ -22,6 +22,7 @@ extern "C"
 #include <windows.h>
 
 using namespace std;
+namespace fs = std::filesystem;
 
 using Clock = chrono::steady_clock;
 
@@ -93,11 +94,73 @@ string currentTimestamp()
 }
 
 // Backup file
-void backupFile(const string &filename)
+#include <filesystem>
+#include <fstream>
+#include <stdexcept>
+
+namespace fs = std::filesystem;
+
+std::ofstream backupFile(const std::string &filename)
 {
-    filesystem::create_directory("backup");
-    string ts = currentTimestamp();
-    filesystem::copy_file(filename, "backup/" + filename + "." + ts);
+    fs::create_directories("backup");
+
+    std::string ts = currentTimestamp();
+    fs::path dst = fs::path("backup") / (fs::path(filename).filename().string() + "." + ts + ".txt");
+
+    std::ofstream ofs(dst, std::ios::binary | std::ios::trunc);
+    if (!ofs.is_open())
+    {
+        throw std::runtime_error("Không thể mở file backup: " + dst.string());
+    }
+
+    return ofs;
+}
+
+std::ifstream loadFile(const std::string &filename)
+{
+    fs::path backupDir{"backup"};
+    const std::string prefix = filename + ".";
+    const std::string suffix = ".txt";
+
+    if (!fs::exists(backupDir) || !fs::is_directory(backupDir))
+    {
+        return {};
+    }
+
+    fs::path latestPath;
+    std::string latestTs;
+
+    for (const auto &entry : fs::directory_iterator(backupDir))
+    {
+        if (!entry.is_regular_file())
+            continue;
+
+        const auto name = entry.path().filename().string();
+        if (name.rfind(prefix, 0) == 0 && name.size() > prefix.size() + suffix.size() && name.substr(name.size() - suffix.size()) == suffix)
+        {
+            std::string ts = name.substr(
+                prefix.size(),
+                name.size() - prefix.size() - suffix.size());
+            if (ts > latestTs)
+            {
+                latestTs = ts;
+                latestPath = entry.path();
+            }
+        }
+    }
+
+    if (latestPath.empty())
+    {
+        return {};
+    }
+
+    std::ifstream ifs(latestPath, std::ios::binary);
+    if (!ifs.is_open())
+    {
+        return {};
+    }
+
+    return ifs;
 }
 
 // Hash mật khẩu (ví dụ placeholder)
@@ -203,8 +266,7 @@ class Storage
 public:
     static void saveUsers(const unordered_map<string, UserAccount> &users)
     {
-        backupFile("users.dat");
-        ofstream ofs("users.dat");
+        ofstream ofs = backupFile("users.dat");
         for (auto &p : users)
         {
             auto &u = p.second;
@@ -216,7 +278,7 @@ public:
     }
     static void loadUsers(unordered_map<string, UserAccount> &users)
     {
-        ifstream ifs("users.dat");
+        ifstream ifs = loadFile("users.dat");
         if (!ifs)
             return;
         string line;
@@ -243,8 +305,7 @@ public:
     }
     static void saveWallets(const unordered_map<string, Wallet> &wallets)
     {
-        backupFile("wallets.dat");
-        ofstream ofs("wallets.dat");
+        ofstream ofs = backupFile("wallets.dat");
         for (auto &p : wallets)
         {
             ofs << p.first << '|' << p.second.balance << "\n";
@@ -252,7 +313,7 @@ public:
     }
     static void loadWallets(unordered_map<string, Wallet> &wallets)
     {
-        ifstream ifs("wallets.dat");
+        ifstream ifs = loadFile("wallets.dat");
         if (!ifs)
             return;
         string line;
@@ -282,7 +343,7 @@ public:
     AccountManager() { Storage::loadUsers(users); }
     ~AccountManager() { Storage::saveUsers(users); }
 
-    bool registerUser(const string &username, const string &password, bool isAdmin)
+    bool registerUser(const string &username, const string &password, bool isAdmin, bool mustChangePassword = false)
     {
         if (users.count(username))
             return false;
@@ -292,7 +353,7 @@ public:
         u.salt = salt;
         u.hashedPassword = hashPassword(password, salt);
         u.isAdmin = isAdmin;
-        u.mustChangePassword = false;
+        u.mustChangePassword = mustChangePassword;
         // Nhập thông tin cá nhân
         cout << "Name: ";
         getline(cin, u.info.name);
@@ -368,12 +429,15 @@ public:
 void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp);
 
 int main()
-{   
+{
+    // Thiết lập console UTF-8
     SetConsoleCP(CP_UTF8);
     SetConsoleOutputCP(CP_UTF8);
+    // Khởi tạo các manager
     AccountManager am;
     WalletManager wm;
     OTPService otp;
+    // Hiển thị menu chính
     mainMenu(am, wm, otp);
     return 0;
 }
@@ -381,11 +445,11 @@ int main()
 void showAdminMenu()
 {
     cout << "\n--- Admin Menu ---\n"
-         << "1. Tạo user mới\n"
-         << "2. Danh sách người dùng\n"
-         << "3. Điều chỉnh thông tin user\n"
-         << "4. Logout\n"
-         << "Choice: ";
+         << "1. Tạo tài khoản mới\n"
+         << "2. Danh sách người tài khoản\n"
+         << "3. Điều chỉnh thông tin tài khoản\n"
+         << "4. Đăng xuất\n"
+         << "Chọn: ";
 }
 
 void showUserMenu()
@@ -395,92 +459,141 @@ void showUserMenu()
          << "2. Thay đổi mật khẩu\n"
          << "3. Xem số dư và lịch sử giao dịch\n"
          << "4. Chuyển điểm\n"
-         << "5. Logout\n"
-         << "Choice: ";
+         << "5. Đăng xuất\n"
+         << "Chọn: ";
+}
+
+void confirmOTP(const string &username, OTPService &otp, const string &successMsg)
+{
+    string code = otp.generate(username);
+    cout << "Mã OTP đã được gửi: " << code << "\n";
+    int count = 0;
+    while (count < 3)
+    {
+        cout << "Nhập mã OTP: ";
+        string inp;
+        getline(cin, inp);
+        if (otp.verify(username, inp))
+        {
+            cout << successMsg;
+            return;
+        }
+        else
+        {
+            cout << "Mã OTP không chính xác. Bạn còn " << (2 - count) << " lần thử.\n";
+            count++;
+        }
+    }
+    cout << "Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau.\n";
 }
 
 void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
 {
     while (true)
     {
-        cout << "\n1. Đăng ký\n2. Đăng nhập\n3. Exit\nChoice: ";
-        int c;
-        cin >> c;
+        cout << "\n1. Đăng ký\n2. Đăng nhập\n3. Thoát\nChọn: ";
+        int choice;
+        cin >> choice;
         cin.ignore();
-        if (c == 1)
+        if (choice == 1)
         {
-            string u, p;
-            bool adm;
-            cout << "Username: ";
-            getline(cin, u);
-            cout << "Password: ";
-            getline(cin, p);
-            cout << "Is Admin? (0/1): ";
+            // Chức năng đăng ký
+            string username, password;
+            bool adm, mustChangePassword = false;
+            // Nhập username
+            cout << "Tên đăng nhập: ";
+            getline(cin, username);
+            // nhập mật khẩu
+            cout << "Mật khẩu (tự sinh)? (Y/N): ";
+            char yn;
+            cin >> yn;
+            cin.ignore();
+            if (yn == 'Y' || yn == 'y')
+            {
+                password = randomNumeric(8);
+                mustChangePassword = true; // tự động sinh thì phải đổi mật khẩu
+                cout << "Mật khẩu của bạn: " << password << "\n";
+            }
+            else
+            {
+                cout << "Nhập mật khẩu: ";
+                getline(cin, password);
+            }
+            // Nhập thông tin cá nhân
+            cout << "Chọn là quyền quản trị? (0/1): ";
             cin >> adm;
             cin.ignore();
-            if (am.registerUser(u, p, adm))
+            if (am.registerUser(username, password, adm, mustChangePassword))
                 cout << "Tạo thành công!";
             else
-                cout << "Username đã tồn tại.";
+                cout << "Tài khoản đã tồn tại.";
         }
-        else if (c == 2)
+        else if (choice == 2)
         {
-            string u, p;
-            cout << "Username: ";
-            getline(cin, u);
-            cout << "Password: ";
-            getline(cin, p);
-            UserAccount *user = am.login(u, p);
+            // Chức năng login
+            string username, password;
+            // Nhập username
+            cout << "Tên đăng nhập: ";
+            getline(cin, username);
+            // Nhập mật khẩu
+            cout << "Nhập mật khẩu: ";
+            getline(cin, password);
+
+            UserAccount *user = am.login(username, password);
+            // Kiểm tra đăng nhập
             if (!user)
             {
-                cout << "Login failed.";
+                cout << "Đăng nhập thất bại. Vui lòng thử lại.\n";
                 continue;
             }
+            // Kiểm tra cần đổi mật khẩu
             if (user->mustChangePassword)
             {
-                cout << "Bạn phải đổi mật khẩu ngay. Nhập mật khẩu mới: ";
-                string np;
-                getline(cin, np);
-                am.changePassword(*user, np);
-                cout << "Đổi mật khẩu thành công!";
+                cout << "Bạn phải đổi mật khẩu.\n Vui lòng nhập mật khẩu mới: ";
+                string newPassword;
+                getline(cin, newPassword);
+                am.changePassword(*user, newPassword);
+                cout << "Mật khẩu được đổi thành công!";
             }
+
             bool logged = true;
             while (logged)
             {
                 if (user->isAdmin)
                 {
                     showAdminMenu();
-                    int ch;
-                    cin >> ch;
+                    int choice;
+                    cin >> choice;
                     cin.ignore();
-                    switch (ch)
+                    switch (choice)
                     {
                     case 1:
                     {
-                        // create user
-                        string u2, p2;
-                        bool adm2;
-                        cout << "New Username: ";
-                        getline(cin, u2);
-                        cout << "Password (auto sinh)? (Y/N): ";
+                        // Tạo user mới
+                        string username, password;
+                        bool isAdmin, mustChangePassword = false;
+                        cout << "Tên đăng nhập: ";
+                        getline(cin, username);
+                        cout << "Mật khẩu (tự sinh)? (Y/N): ";
                         char yn;
                         cin >> yn;
                         cin.ignore();
-                        if (yn == 'Y')
+                        if (yn == 'Y' || yn == 'y')
                         {
-                            p2 = randomNumeric(8);
-                            cout << "OTP pass: " << p2 << "\n";
+                            password = randomNumeric(8);
+                            mustChangePassword = true; // tự động sinh thì phải đổi mật khẩu
+                            cout << "Mật khẩu của bạn: " << password << "\n";
                         }
                         else
                         {
-                            cout << "Password: ";
-                            getline(cin, p2);
+                            cout << "Nhập mật khẩu: ";
+                            getline(cin, password);
                         }
-                        cout << "Is Admin? (0/1): ";
-                        cin >> adm2;
+                        cout << "Chọn là quyền quản trị? (0/1): ";
+                        cin >> isAdmin;
                         cin.ignore();
-                        am.registerUser(u2, p2, adm2);
-                        cout << "User created.";
+                        am.registerUser(username, password, isAdmin, mustChangePassword);
+                        cout << "Đã tạo tài khoản thành công!\n";
                         break;
                     }
                     case 2:
@@ -492,109 +605,114 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                     }
                     case 3:
                     {
-                        cout << "Username to edit: ";
-                        string eu;
-                        getline(cin, eu);
+                        // Chỉnh sửa thông tin user
+                        cout << "\n--- Chỉnh sửa thông tin tài khoản  ---\n";
+                        cout << "username: ";
+                        string username;
+                        getline(cin, username);
                         auto &all = am.getAll();
-                        if (!all.count(eu))
+                        if (!all.count(username))
                         {
-                            cout << "Not found\n";
+                            cout << "Không tìm thấy tài khoản\n";
                             break;
                         }
-                        UserAccount &tu = all[eu];
-                        cout << "New name: ";
+                        // Nhập thông tin mới
+                        UserAccount &tu = all[username];
+                        cout << "Nhập thông tin mới cho tài khoản " << username << ":\n";
+
+                        cout << "Tên: ";
                         getline(cin, tu.info.name);
-                        cout << "New email: ";
+                        cout << "Địa chỉ email: ";
                         getline(cin, tu.info.email);
-                        cout << "New phone: ";
+                        cout << "Số điên thoại: ";
                         getline(cin, tu.info.phone);
                         // gửi OTP để confirm
-                        string code = otp.generate(eu);
-                        cout << "Mã OTP cho " << eu << ": " << code << "\n";
-                        cout << "Nhập OTP: ";
-                        string inp;
-                        getline(cin, inp);
-                        if (otp.verify(eu, inp))
-                            cout << "Update thành công";
-                        else
-                            cout << "OTP sai. Hủy.";
+                        confirmOTP(username, otp, "Xác thực thành công. Thông tin đã được cập nhật.\n");
                         break;
                     }
                     case 4:
+                    {
                         logged = false;
                         break;
+                    }
                     default:
-                        cout << "Invalid";
+                    {
+                        cout << "Không hợp lệ. Vui lòng chọn lại.\n";
+                    }
                     }
                 }
                 else
                 {
                     showUserMenu();
-                    int ch;
-                    cin >> ch;
+                    int choice;
+                    cin >> choice;
                     cin.ignore();
-                    switch (ch)
+                    switch (choice)
                     {
                     case 1:
-                        cout << "Name: " << user->info.name << "\nEmail: " << user->info.email
-                             << "\nPhone: " << user->info.phone << "\n";
+                    {
+                        // Xem thông tin cá nhân
+                        cout << "\n--- Thông tin cá nhân ---\n";
+                        cout << "Name: " << user->info.name
+                             << "\nEmail: " << user->info.email
+                             << "\nPhone: " << user->info.phone
+                             << "\n";
                         break;
+                    }
                     case 2:
                     {
-                        cout << "Old password: ";
-                        string op;
-                        getline(cin, op);
-                        if (hashPassword(op, user->salt) != user->hashedPassword)
+                        // Đổi mật khẩu
+                        cout << "Nhập mật khẩu cũ: ";
+                        string oldPassword;
+                        getline(cin, oldPassword);
+                        if (hashPassword(oldPassword, user->salt) != user->hashedPassword)
                         {
-                            cout << "Sai password\n";
+                            cout << "Nhập sai mật khẩu\n";
                             break;
                         }
-                        cout << "New password: ";
-                        string np;
-                        getline(cin, np);
-                        am.changePassword(*user, np);
+                        cout << "Mật khẩu mới: ";
+                        string newPassword;
+                        getline(cin, newPassword);
+                        am.changePassword(*user, newPassword);
                         cout << "Đổi mật khẩu thành công\n";
                         break;
                     }
                     case 3:
                     {
-                        Wallet &w = wm.getWallet(user->walletId);
-                        cout << "Balance: " << w.balance << "\n";
+                        // Xem số dư và lịch sử giao dịch
+                        Wallet &wallet = wm.getWallet(user->walletId);
+                        cout << "\n--- Xem thông tin ví ---\n";
+                        cout << "Số dư: " << wallet.balance << "\n";
                         // Không load lại toàn lịch sử
                         cout << "Xem file transactions.log để chi tiết.\n";
                         break;
                     }
                     case 4:
                     {
-                        cout << "To Wallet ID: ";
-                        string to;
-                        getline(cin, to);
+                        // Chuyển tiền
+                        // Nhập ví đích
+                        cout << "\n--- Chuyển tiền ---\n";
+                        cout << "Vui lòng nhập mã của ví được chuyển: ";
+                        string toWalletId;
+                        getline(cin, toWalletId);
+                        // Nhập số tiền
                         cout << "Amount: ";
                         long long amt;
                         cin >> amt;
                         cin.ignore();
-                        // OTP xác nhận
-                        string code = otp.generate(user->username);
-                        cout << "OTP: " << code << "\n";
-                        cout << "Nhập OTP: ";
-                        string inp;
-                        getline(cin, inp);
-                        if (!otp.verify(user->username, inp))
-                        {
-                            cout << "OTP sai\n";
-                            break;
-                        }
-                        if (wm.transfer(user->walletId, to, amt))
-                            cout << "Chuyển thành công\n";
-                        else
-                            cout << "Không đủ số dư hoặc lỗi.\n";
+                        // gửi OTP để confirm
+                        confirmOTP(user->username, otp, "Xác thực thành công. Giao dịch đã được thực hiện.\n");
                         break;
                     }
                     case 5:
+                    {
                         logged = false;
                         break;
+                    }
                     default:
-                        cout << "Invalid";
+                    {
+                        cout << "Không hợp lệ. Vui lòng chọn lại.\n";
+                    }
                     }
                 }
             }

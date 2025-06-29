@@ -1,11 +1,6 @@
 # ninja log v7
-8	102	7728178883226976	CMakeFiles/COTP.dir/COTP/otpuri.c.obj	4572d9f39a2d3717
-4	149	7728178883210339	CMakeFiles/COTP.dir/COTP/cotp.c.obj	999ada25d2675dcd
-149	235	7728178884577328	libCOTP.a	23c33da9c12356cc
-10	1259	7728178883226976	CMakeFiles/account_wallet_app.dir/account_wallet_system/account_wallet_app.cpp.obj	2edc381253d707f2
-1259	1378	7728178895742767	account_wallet_app.exe	dd675247efb57bc7
-16	105	7728180390505050	CMakeFiles/COTP.dir/COTP/otpuri.c.obj	4572d9f39a2d3717
-12	147	7728180390465756	CMakeFiles/COTP.dir/COTP/cotp.c.obj	999ada25d2675dcd
-147	225	7728180391734644	libCOTP.a	23c33da9c12356cc
-18	1793	7728180390526005	CMakeFiles/account_wallet_app.dir/account_wallet_system/account_wallet_app.cpp.obj	2edc381253d707f2
-1795	1917	7728180408191458	account_wallet_app.exe	dd675247efb57bc7
+7	124	7728843256734814	CMakeFiles/COTP.dir/COTP/otpuri.c.obj	4572d9f39a2d3717
+4	181	7728843256734814	CMakeFiles/COTP.dir/COTP/cotp.c.obj	999ada25d2675dcd
+182	265	7728843258529945	libCOTP.a	23c33da9c12356cc
+10	2121	7728843256734814	CMakeFiles/account_wallet_app.dir/account_wallet_system/account_wallet_app.cpp.obj	2edc381253d707f2
+2123	2248	7728843277949503	account_wallet_app.exe	dd675247efb57bc7
