@@ -10,7 +10,11 @@
                 "${file}",
                 "-I", "${workspaceFolder}/COTP",
                 "-o",
-                "${fileDirname}\\${fileBasenameNoExtension}.exe"
+                "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                "-LC:/Users/toankh/Documents/mini-project/COTP",
+                "-lcotp",
+                "-lssl",
+                "-lcrypto"
             ],
             "options": {
                 "cwd": "C:/msys64/mingw64/bin"
