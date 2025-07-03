@@ -225,7 +225,7 @@ struct UserAccount
 
 class OTPService
 {
-    const char *secretKey = "BASE32SECRET";
+    const char *secretKey = "JBSWY3DPEHPK3PXP"; // 16 ký tự base32 hợp lệ
     uint32_t digits = 6;
     struct OtpEntry
     {
@@ -607,7 +607,7 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                     {
                         // Chỉnh sửa thông tin user
                         cout << "\n--- Chỉnh sửa thông tin tài khoản  ---\n";
-                        cout << "username: ";
+                        cout << "Nhập username: ";
                         string username;
                         getline(cin, username);
                         auto &all = am.getAll();
