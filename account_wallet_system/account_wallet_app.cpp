@@ -100,12 +100,21 @@ string currentTimestamp()
 
 namespace fs = std::filesystem;
 
+std::string getExecutableDir() {
+    char buffer[MAX_PATH];
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    std::string path(buffer);
+    return std::filesystem::path(path).parent_path().string();
+}
+
 std::ofstream backupFile(const std::string &filename)
 {
-    fs::create_directories("backup");
+    std::string exeDir = getExecutableDir();
+    fs::path backupDir = fs::path(exeDir) / "backup";
+    fs::create_directories(backupDir);
 
     std::string ts = currentTimestamp();
-    fs::path dst = fs::path("backup") / (fs::path(filename).filename().string() + "." + ts + ".txt");
+    fs::path dst = backupDir / (fs::path(filename).filename().string() + "." + ts + ".txt");
 
     std::ofstream ofs(dst, std::ios::binary | std::ios::trunc);
     if (!ofs.is_open())
