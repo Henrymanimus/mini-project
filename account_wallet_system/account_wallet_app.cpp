@@ -2,8 +2,8 @@
 
 extern "C"
 {
-    #include "cotp.h"
-    #include "otpuri.h"
+#include "cotp.h"
+#include "otpuri.h"
 }
 
 #include <cstdint>
@@ -100,7 +100,8 @@ string currentTimestamp()
 
 namespace fs = std::filesystem;
 
-std::string getExecutableDir() {
+std::string getExecutableDir()
+{
     char buffer[MAX_PATH];
     GetModuleFileNameA(NULL, buffer, MAX_PATH);
     std::string path(buffer);
@@ -610,7 +611,13 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                     {
                         // list users
                         for (auto &p : am.getAll())
+                        {
                             cout << p.first << " (" << (p.second.isAdmin ? "Admin" : "User") << ")\n";
+                            cout << "Name: " << p.second.info.name << endl;
+                            cout << "Email: " << p.second.info.email << endl;
+                            cout << "Phone: " << p.second.info.phone << endl;
+                            cout << endl;
+                        }
                         break;
                     }
                     case 3:
