@@ -127,7 +127,8 @@ std::ofstream backupFile(const std::string &filename)
 
 std::ifstream loadFile(const std::string &filename)
 {
-    fs::path backupDir{"backup"};
+    std::string exeDir = getExecutableDir();
+    fs::path backupDir = fs::path(exeDir) / "backup";
     const std::string prefix = filename + ".";
     const std::string suffix = ".txt";
 
