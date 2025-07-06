@@ -339,62 +339,11 @@ public:
     }
     static void logTransaction(const Transaction &t)
     {
-        ofstream ofs("transactions.log", ios::app);
+        ofstream ofs = backupFile("transactions.log");
         ofs << t.id << '|' << t.fromWallet << '|' << t.toWallet
             << '|' << t.amount << '|' << t.timestamp
             << '|' << int(t.status) << "\n";
     }
-};
-
-class AccountManager
-{
-    unordered_map<string, UserAccount> users;
-
-public:
-    AccountManager() { Storage::loadUsers(users); }
-    ~AccountManager() { Storage::saveUsers(users); }
-
-    bool registerUser(const string &username, const string &password, bool isAdmin, bool mustChangePassword = false)
-    {
-        if (users.count(username))
-            return false;
-        string salt = randomNumeric(8);
-        UserAccount u;
-        u.username = username;
-        u.salt = salt;
-        u.hashedPassword = hashPassword(password, salt);
-        u.isAdmin = isAdmin;
-        u.mustChangePassword = mustChangePassword;
-        // Nhập thông tin cá nhân
-        cout << "Name: ";
-        getline(cin, u.info.name);
-        cout << "Email: ";
-        getline(cin, u.info.email);
-        cout << "Phone: ";
-        getline(cin, u.info.phone);
-        // Tạo ví cho user
-        u.walletId = "WAL" + currentTimestamp();
-        users[username] = u;
-        return true;
-    }
-    UserAccount *login(const string &username, const string &password)
-    {
-        auto it = users.find(username);
-        if (it == users.end())
-            return nullptr;
-        string hashed = hashPassword(password, it->second.salt);
-        if (hashed != it->second.hashedPassword)
-            return nullptr;
-        return &it->second;
-    }
-    bool changePassword(UserAccount &u, const string &newPass)
-    {
-        u.salt = randomNumeric(8);
-        u.hashedPassword = hashPassword(newPass, u.salt);
-        u.mustChangePassword = false;
-        return true;
-    }
-    unordered_map<string, UserAccount> &getAll() { return users; }
 };
 
 class WalletManager
@@ -436,7 +385,60 @@ public:
     }
 };
 
-// Giao diện CLI
+class AccountManager
+{
+    unordered_map<string, UserAccount> users;
+
+public:
+    AccountManager() { Storage::loadUsers(users); }
+    ~AccountManager() { Storage::saveUsers(users); }
+
+    bool registerUser(const string &username, const string &password, bool isAdmin, WalletManager &wm, bool mustChangePassword = false)
+    {
+        if (users.count(username))
+            return false;
+        string salt = randomNumeric(8);
+        UserAccount u;
+        u.username = username;
+        u.salt = salt;
+        u.hashedPassword = hashPassword(password, salt);
+        u.isAdmin = isAdmin;
+        u.mustChangePassword = mustChangePassword;
+        // Nhập thông tin cá nhân
+        cout << "Name: ";
+        getline(cin, u.info.name);
+        cout << "Email: ";
+        getline(cin, u.info.email);
+        cout << "Phone: ";
+        getline(cin, u.info.phone);
+        // Tạo ví cho user
+        u.walletId = "WAL" + currentTimestamp();
+        users[username] = u;
+        // Tạo ví với số dư 100
+        wm.ensureWallet(u.walletId);
+        wm.getWallet(u.walletId).balance = 100;
+        return true;
+    }
+    UserAccount *login(const string &username, const string &password)
+    {
+        auto it = users.find(username);
+        if (it == users.end())
+            return nullptr;
+        string hashed = hashPassword(password, it->second.salt);
+        if (hashed != it->second.hashedPassword)
+            return nullptr;
+        return &it->second;
+    }
+    bool changePassword(UserAccount &u, const string &newPass)
+    {
+        u.salt = randomNumeric(8);
+        u.hashedPassword = hashPassword(newPass, u.salt);
+        u.mustChangePassword = false;
+        return true;
+    }
+    unordered_map<string, UserAccount> &getAll() { return users; }
+};
+
 void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp);
 
 int main()
@@ -474,7 +476,7 @@ void showUserMenu()
          << "Chọn: ";
 }
 
-void confirmOTP(const string &username, OTPService &otp, const string &successMsg)
+bool confirmOTP(const string &username, OTPService &otp)
 {
     string code = otp.generate(username);
     cout << "Mã OTP đã được gửi: " << code << "\n";
@@ -486,8 +488,7 @@ void confirmOTP(const string &username, OTPService &otp, const string &successMs
         getline(cin, inp);
         if (otp.verify(username, inp))
         {
-            cout << successMsg;
-            return;
+            return true;
         }
         else
         {
@@ -495,7 +496,7 @@ void confirmOTP(const string &username, OTPService &otp, const string &successMs
             count++;
         }
     }
-    cout << "Bạn đã nhập sai quá nhiều lần. Vui lòng thử lại sau.\n";
+    return false;
 }
 
 void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
@@ -531,10 +532,10 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                 getline(cin, password);
             }
             // Nhập thông tin cá nhân
-            cout << "Chọn là quyền quản trị? (0/1): ";
+            cout << "Chọn là quyền admin? (0: No / 1: Yes): ";
             cin >> adm;
             cin.ignore();
-            if (am.registerUser(username, password, adm, mustChangePassword))
+            if (am.registerUser(username, password, adm, wm, mustChangePassword))
                 cout << "Tạo thành công!";
             else
                 cout << "Tài khoản đã tồn tại.";
@@ -600,10 +601,10 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                             cout << "Nhập mật khẩu: ";
                             getline(cin, password);
                         }
-                        cout << "Chọn là quyền quản trị? (0/1): ";
+                        cout << "Chọn là quyền admin? (0: No / 1: Yes): ";
                         cin >> isAdmin;
                         cin.ignore();
-                        am.registerUser(username, password, isAdmin, mustChangePassword);
+                        am.registerUser(username, password, isAdmin, wm, mustChangePassword);
                         cout << "Đã tạo tài khoản thành công!\n";
                         break;
                     }
@@ -611,13 +612,7 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                     {
                         // list users
                         for (auto &p : am.getAll())
-                        {
                             cout << p.first << " (" << (p.second.isAdmin ? "Admin" : "User") << ")\n";
-                            cout << "Name: " << p.second.info.name << endl;
-                            cout << "Email: " << p.second.info.email << endl;
-                            cout << "Phone: " << p.second.info.phone << endl;
-                            cout << endl;
-                        }
                         break;
                     }
                     case 3:
@@ -644,7 +639,16 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                         cout << "Số điên thoại: ";
                         getline(cin, tu.info.phone);
                         // gửi OTP để confirm
-                        confirmOTP(username, otp, "Xác thực thành công. Thông tin đã được cập nhật.\n");
+                        bool isConfirmed = confirmOTP(username, otp);
+                        if( isConfirmed)
+                        {
+                            cout << "Xác thực thành công. Thông tin đã được cập nhật.\n";
+                            Storage::saveUsers(all);
+                        }
+                        else
+                        {
+                            cout << "Xác thực thất bại. Thông tin không được cập nhật.\n";
+                        }
                         break;
                     }
                     case 4:
@@ -718,7 +722,14 @@ void mainMenu(AccountManager &am, WalletManager &wm, OTPService &otp)
                         cin >> amt;
                         cin.ignore();
                         // gửi OTP để confirm
-                        confirmOTP(user->username, otp, "Xác thực thành công. Giao dịch đã được thực hiện.\n");
+                        bool isConfirmed = confirmOTP(username, otp);
+                        if (isConfirmed) {
+                            if (wm.transfer(user->walletId, toWalletId, amt)) {
+                                cout << "Chuyển điểm thành công.\n";
+                            } else {
+                                cout << "Chuyển điểm thất bại (không đủ số dư hoặc ví đích không hợp lệ).\n";
+                            }
+                        }
                         break;
                     }
                     case 5:

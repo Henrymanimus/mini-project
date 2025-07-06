@@ -11,7 +11,7 @@
                 "-I", "${workspaceFolder}/COTP",
                 "-o",
                 "${fileDirname}\\${fileBasenameNoExtension}.exe",
-                "-LC:/Users/toankh/Documents/mini-project/COTP",
+                "-L" , "${workspaceFolder}/COTP",
                 "-lcotp",
                 "-lssl",
                 "-lcrypto"
